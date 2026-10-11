@@ -57,6 +57,7 @@ function restore(text) {
   state.note = data.note || '';
   next_id = 1 + Math.max(0, ...state.parts.map((part) => Number(String(part.id).slice(1)) || 0));
   if (!state.parts.some((part) => part.id === state.selected)) state.selected = null;
+  clear_scope();
 }
 
 function commit() {
@@ -69,14 +70,14 @@ function undo() {
   if (!undo_stack.length) return;
   redo_stack.push(snapshot());
   restore(undo_stack.pop());
-  changed();
+  changed({ reset: true });
 }
 
 function redo() {
   if (!redo_stack.length) return;
   undo_stack.push(snapshot());
   restore(redo_stack.pop());
-  changed();
+  changed({ reset: true });
 }
 
 function save_local() {
@@ -121,11 +122,14 @@ function rebuild({ reset = false } = {}) {
       for (const field of ['v_prev', 'i_prev', 'v_guess', 'current']) if (field in old) element[field] = old[field];
     }
   }
-  if (reset || !previous) clear_scope();
+  if (reset || !previous || scope_buffer.series.length !== state.probes.length) clear_scope();
   sim_lookup = new Map(sim.elements.map((element) => [element.id, element]));
   flows = new Map();
   if (!error) {
-    try { sim.step(state.settings.timestep); } catch (problem) { set_solve_error(problem); }
+    try {
+      if (state.running) sim.step(state.settings.timestep);
+      else sim.settle(state.settings.timestep);
+    } catch (problem) { set_solve_error(problem); }
     if (!error) update_flows();
   }
 }
@@ -492,7 +496,9 @@ function paint(wall_dt) {
     let phase = (dot_phase.get(part.id) || 0) + (state.running ? rate * wall_dt : 0);
     phase = ((phase % spacing) + spacing) % spacing;
     dot_phase.set(part.id, phase);
+    const circle = (part.type === 'source' && part.wave.shape !== 'dc') || part.type === 'current' ? Math.min(body_of(part).half, length / 2) + 2 : 0;
     for (let s = phase; s < length; s += spacing) {
+      if (circle && Math.abs(s - length / 2) < circle) continue;
       const x = x1 + ux * s, y = y1 + uy * s;
       dots += `M${x.toFixed(1)} ${y.toFixed(1)}h0`;
     }
@@ -557,6 +563,8 @@ function selected_part() {
 }
 
 function changed({ reset = false, keep_inspector = false } = {}) {
+  // a shared link in the address bar would replace these edits on the next reload
+  if (location.hash.startsWith('#c=')) history.replaceState(null, '', location.pathname);
   rebuild({ reset });
   render_board();
   if (!keep_inspector) render_inspector();
@@ -645,8 +653,8 @@ board.addEventListener('pointerdown', (event) => {
     const part = part_at(event.target);
     const key = point_key(point.x, point.y);
     const near_point = Math.hypot(world.x - point.x * grid, world.y - point.y * grid) < 9 && built.point_node.has(key);
-    if (near_point) toggle_probe(null, point);
-    else if (part && part.type !== 'ground') toggle_probe(part, null);
+    if (near_point) drag = { mode: 'probe', point };
+    else if (part && part.type !== 'ground') drag = { mode: 'probe', part };
     else drag = { mode: 'pan', client: { x: event.clientX, y: event.clientY }, view: { ...view } };
     return;
   }
@@ -701,10 +709,11 @@ board.addEventListener('pointermove', (event) => {
     case 'move': {
       const dx = point.x - drag.origin.x, dy = point.y - drag.origin.y;
       if (!drag.moved && Math.hypot(event.clientX - drag.client.x, event.clientY - drag.client.y) < 4) return;
-      if (!drag.moved) { commit(); drag.moved = true; }
       const part = drag.part;
       const nx1 = drag.start.x1 + dx, ny1 = drag.start.y1 + dy;
+      drag.moved = true;
       if (nx1 === part.x1 && ny1 === part.y1) return;
+      if (!drag.committed) { commit(); drag.committed = true; }
       part.x1 = nx1; part.y1 = ny1; part.x2 = drag.start.x2 + dx; part.y2 = drag.start.y2 + dy;
       changed({ keep_inspector: true });
       break;
@@ -715,7 +724,8 @@ board.addEventListener('pointermove', (event) => {
       if (part[fx] === point.x && part[fy] === point.y) return;
       const other = drag.end === 1 ? [part.x2, part.y2] : [part.x1, part.y1];
       if (other[0] === point.x && other[1] === point.y) return;
-      if (!drag.moved) { commit(); drag.moved = true; }
+      if (!drag.committed) { commit(); drag.committed = true; }
+      drag.moved = true;
       part[fx] = point.x; part[fy] = point.y;
       changed({ keep_inspector: true });
       break;
@@ -738,8 +748,10 @@ function finish_pointer(event) {
       state.parts.push(part);
       changed();
     }
+  } else if (drag.mode === 'probe' && event.type === 'pointerup') {
+    toggle_probe(drag.part || null, drag.point || null);
   } else if (drag.mode === 'move' && !drag.moved && event.type === 'pointerup') {
-    if (toggle(drag.part)) changed();
+    if (['switch', 'logic'].includes(drag.part.type)) { commit(); toggle(drag.part); changed(); }
   } else if (drag.mode === 'move' || drag.mode === 'end') {
     render_inspector();
   }
@@ -918,7 +930,7 @@ function render_inspector() {
       live_fields.push({ dd, read });
     };
     if (single_ended.has(part.type) || part.type === 'wire') live('Voltage', () => format_value(part_readings(part).v1, 'V', 4));
-    else live('Across', () => format_value(part_readings(part).across, 'V', 4));
+    else live('Across', () => format_value((part.type === 'source' ? -1 : 1) * part_readings(part).across, 'V', 4));
     live('Current', () => format_value(part_readings(part).current ?? 0, 'A', 4));
     if (!['wire', 'switch'].includes(part.type)) {
       live('Power', () => {
@@ -1176,7 +1188,7 @@ function show_toast(text) {
   toast_timer = setTimeout(() => { toast.hidden = true; }, 2200);
 }
 
-const to_base64 = (bytes) => btoa(String.fromCharCode(...bytes)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+const to_base64 = (bytes) => btoa(Array.from(bytes, (byte) => String.fromCharCode(byte)).join('')).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 const from_base64 = (text) => Uint8Array.from(atob(text.replace(/-/g, '+').replace(/_/g, '/')), (char) => char.charCodeAt(0));
 
 async function encode_circuit() {
@@ -1198,7 +1210,8 @@ async function decode_circuit(text) {
 }
 
 $('#share').addEventListener('click', async () => {
-  const code = await encode_circuit();
+  let code;
+  try { code = await encode_circuit(); } catch { show_toast('This circuit could not be made into a link'); return; }
   const url = `${location.origin}${location.pathname}#c=${code}`;
   history.replaceState(null, '', `#c=${code}`);
   try {
@@ -1282,6 +1295,11 @@ function show_banner() {
     banner.textContent = error.message;
     banner.className = 'banner';
     banner.hidden = false;
+  } else if (sim && Array.from(sim.voltages).some((v) => Math.abs(v) > 1e6)) {
+    banner.textContent = 'Some point has no path for steady current, such as a current source with nowhere to go, '
+      + 'so its voltage has run away. Give it a path, for example through a resistor.';
+    banner.className = 'banner soft';
+    banner.hidden = false;
   } else if (built && !built.has_ground && state.parts.length) {
     banner.textContent = 'There is no ground yet, so voltages are measured from an arbitrary point. Add one with G.';
     banner.className = 'banner soft';
@@ -1301,6 +1319,7 @@ function frame(now) {
   if (frame_count++ % 6 === 0) {
     update_live();
     update_legend_values();
+    show_banner();
     clock.textContent = `t = ${format_value(sim ? sim.time : 0, 's', 3)}`;
     update_speed_label();
   }
@@ -1323,6 +1342,7 @@ async function start() {
   const hash = location.hash.match(/^#c=(.+)$/);
   if (hash) {
     try { restore(await decode_circuit(hash[1])); loaded = true; } catch { show_toast('That link could not be read'); }
+    history.replaceState(null, '', location.pathname);
   }
   if (!loaded) {
     try {

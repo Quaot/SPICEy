@@ -80,7 +80,7 @@ test('LC tank rings at 1/(2π√LC) and keeps its amplitude', () => {
   sim.elements[0].i_prev = 0;
   sim.elements[1].i_prev = 0;
   sim.elements[1].v_prev = 1;
-  sim.backward_euler_next = false;
+  sim.euler_steps = 0;
   const period = 2 * Math.PI * Math.sqrt(L * C);
   const dt = period / 400;
   const crossings = [];
@@ -228,4 +228,49 @@ test('clocked R-2R counts up through all 16 codes', async () => {
     while (sim.time < middle - dt / 2) sim.step(dt);
     close(sim.voltage(out), 3.3 * code / 16, 1e-6, `code ${code}`);
   }
+});
+
+test('square wave straight across a capacitor settles between edges', () => {
+  const sim = new Simulator({ node_count: 2, elements: [
+    { id: 'v', kind: 'V', a: 1, b: 0, wave: { shape: 'square', offset: 0, amplitude: 1, frequency: 10, duty: 0.5 } },
+    { id: 'c', kind: 'C', a: 1, b: 0, capacitance: 1e-6 },
+  ] });
+  for (let i = 0; i < 300; i++) sim.step(1e-4);
+  close(sim.elements[1].current, 0, 1e-9);
+});
+
+test('opening the switch on an inductor does not ring forever', () => {
+  const elements = [
+    { id: 'v', kind: 'V', a: 1, b: 0, wave: dc(1) },
+    { id: 'r', kind: 'R', a: 1, b: 2, resistance: 10 },
+    { id: 'l', kind: 'L', a: 2, b: 0, inductance: 1e-3 },
+  ];
+  const sim = new Simulator({ node_count: 3, elements });
+  for (let i = 0; i < 2000; i++) sim.step(1e-5);
+  sim.set_value('v', 'wave', dc(0));
+  const after = [];
+  for (let i = 0; i < 50; i++) { sim.step(1e-5); after.push(sim.voltage(2)); }
+  const flips = after.slice(10).filter((v, i, list) => i && Math.sign(v) !== Math.sign(list[i - 1])).length;
+  assert.equal(flips, 0);
+});
+
+test('a diode straight across a source still solves', () => {
+  const sim = new Simulator({ node_count: 2, elements: [
+    { id: 'v', kind: 'V', a: 1, b: 0, wave: dc(5) },
+    { id: 'd', kind: 'D', a: 1, b: 0 },
+  ] });
+  sim.operating_point();
+  assert.ok(sim.elements[1].current > 1);
+});
+
+test('settle leaves time and state alone', () => {
+  const sim = new Simulator({ node_count: 3, elements: [
+    { id: 'v', kind: 'V', a: 1, b: 0, wave: dc(5) },
+    { id: 'r', kind: 'R', a: 1, b: 2, resistance: 1000 },
+    { id: 'c', kind: 'C', a: 2, b: 0, capacitance: 1e-6 },
+  ] });
+  for (let i = 0; i < 100; i++) sim.step(1e-5);
+  const before = [sim.time, sim.elements[2].v_prev];
+  sim.settle(1e-5);
+  assert.deepEqual([sim.time, sim.elements[2].v_prev], before);
 });

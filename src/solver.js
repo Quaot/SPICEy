@@ -3,6 +3,15 @@
 
 const thermal_voltage = 0.025852;
 const gmin = 1e-12;
+// Past this many thermal voltages the diode curve carries on as a straight line, so the matrix stays well scaled.
+const exp_limit = 40;
+
+function junction_exp(x) {
+  return x > exp_limit ? Math.exp(exp_limit) * (1 + x - exp_limit) : Math.exp(x);
+}
+function junction_slope(x) {
+  return Math.exp(Math.min(x, exp_limit));
+}
 
 export class SolveError extends Error {}
 
@@ -96,7 +105,7 @@ export class Simulator {
     this.voltages = new Float64Array(this.node_count);
     this.matrix = Array.from({ length: this.size }, () => new Float64Array(this.size));
     this.rhs = new Float64Array(this.size);
-    this.backward_euler_next = true;
+    this.euler_steps = 2;
   }
 
   voltage(node) {
@@ -163,9 +172,9 @@ export class Simulator {
         }
         case 'D': {
           const v = element.v_guess;
-          const exponent = Math.exp(Math.min(v / element.n_vt, 80));
-          const current = element.saturation * (exponent - 1);
-          const g = element.saturation * exponent / element.n_vt + gmin;
+          const x = v / element.n_vt;
+          const current = element.saturation * (junction_exp(x) - 1);
+          const g = element.saturation * junction_slope(x) / element.n_vt + gmin;
           conductance(a, b, g);
           inject(a, b, g * v - current);
           break;
@@ -224,7 +233,7 @@ export class Simulator {
           break;
         }
         case 'D':
-          element.current = element.saturation * (Math.exp(Math.min(v / element.n_vt, 80)) - 1);
+          element.current = element.saturation * (junction_exp(v / element.n_vt) - 1);
           break;
       }
     }
@@ -233,17 +242,17 @@ export class Simulator {
   operating_point() {
     const solution = this.solve_point('dc', 0, this.time);
     this.update_currents(solution, 'dc', 0, this.time);
-    this.backward_euler_next = true;
+    this.euler_steps = 2;
   }
 
   step(dt) {
     const t_next = this.time + dt;
-    let mode = 'trap';
-    if (this.backward_euler_next) mode = 'euler';
+    // Two backward Euler steps after any jump, or the trapezoidal rule keeps ringing on it.
     for (const element of this.elements) {
-      if ((element.kind === 'V' || element.kind === 'I') && square_edge(element.wave, this.time, t_next)) mode = 'euler';
+      if ((element.kind === 'V' || element.kind === 'I') && square_edge(element.wave, this.time, t_next)) this.euler_steps = 2;
     }
-    this.backward_euler_next = false;
+    const mode = this.euler_steps > 0 ? 'euler' : 'trap';
+    if (this.euler_steps > 0) this.euler_steps--;
     const solution = this.solve_point(mode, dt, t_next);
     this.update_currents(solution, mode, dt, t_next);
     this.time = t_next;
@@ -255,6 +264,17 @@ export class Simulator {
     if (!element) return;
     if (field === 'wave') element.wave = value;
     else element[field] = value;
-    this.backward_euler_next = true;
+    this.euler_steps = 2;
+  }
+
+  // Solves at the current time without moving time on or changing the stored state, for edits made while paused.
+  settle(dt) {
+    const saved = this.elements.map((element) => [element.v_prev, element.i_prev]);
+    const { time, euler_steps } = this;
+    this.euler_steps = 2;
+    this.step(dt);
+    this.elements.forEach((element, i) => { [element.v_prev, element.i_prev] = saved[i]; });
+    this.time = time;
+    this.euler_steps = euler_steps;
   }
 }
