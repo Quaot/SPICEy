@@ -221,7 +221,7 @@ test('clocked R-2R counts up through all 16 codes', async () => {
   const parts = preset.parts.map((item, i) => ({ id: `p${i}`, ...item }));
   const built = build_netlist(parts);
   const sim = new Simulator(built.netlist);
-  const out = built.point_node.get('20,5');
+  const out = built.point_node.get('19,5');
   const dt = preset.settings.timestep;
   for (let code = 0; code < 16; code++) {
     const middle = (code + 0.5) * 0.5e-3;   // the count changes every 0.5 ms
@@ -319,7 +319,7 @@ test('LDO example holds 3.3 V at 5 V in and loses it below 4.55 V', async () => 
   const built = build_netlist(parts);
   assert.deepEqual(built.problems, []);
   const sim = new Simulator(built.netlist);
-  const out = built.point_node.get('13,2');
+  const out = built.point_node.get('12,2');
   const input = built.point_node.get('0,2');
   let held = null, lowest_held = Infinity;
   for (let i = 0; i < 10000; i++) {

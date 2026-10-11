@@ -1,8 +1,9 @@
 import { Simulator, SolveError } from './solver.js';
-import { build_netlist, wire_currents, part_points, point_key, adjust_point } from './netlist.js';
+import { build_netlist, wire_currents, part_points, point_key } from './netlist.js';
 import { parse_value, format_value } from './units.js';
 import { grid, tools, tool_of, body_of, led_colors, value_fields, wave_fields, wave_from } from './parts.js';
 import { presets } from './presets.js';
+import { place_by_click, reversed } from './placement.js';
 
 const svg_ns = 'http://www.w3.org/2000/svg';
 const $ = (selector) => document.querySelector(selector);
@@ -68,6 +69,7 @@ function commit() {
 
 function undo() {
   if (!undo_stack.length) return;
+  hide_flip();
   redo_stack.push(snapshot());
   restore(undo_stack.pop());
   changed({ reset: true });
@@ -75,6 +77,7 @@ function undo() {
 
 function redo() {
   if (!redo_stack.length) return;
+  hide_flip();
   undo_stack.push(snapshot());
   restore(redo_stack.pop());
   changed({ reset: true });
@@ -247,7 +250,7 @@ function value_label(part) {
     const swing = wave.offset === 0
       ? `±${format_value(Math.abs(wave.amplitude), unit)}`
       : `${format_value(wave.offset - Math.abs(wave.amplitude), '')} to ${format_value(wave.offset + Math.abs(wave.amplitude), unit)}`;
-    return `${wave.shape} ${swing} ${format_value(wave.frequency, 'Hz')}`;
+    return [`${wave.shape} ${swing}`, format_value(wave.frequency, 'Hz')];
   };
   switch (part.type) {
     case 'resistor': return format_value(part.resistance, 'Ω');
@@ -334,17 +337,25 @@ function draw_part(part, parent, ghost = false) {
       const value = value_label(part);
       const mx = (x1 + x2) / 2, my = (y1 + y2) / 2;
       const horizontal = Math.abs(ux) > Math.abs(uy);
+      // Labels sit above horizontal parts and right of vertical ones, unless the part asks for the other side.
+      const flipped = part.label_side === 'below' || part.label_side === 'left';
+      const gap = part.type === 'led' ? 30 : part.type === 'regulator' ? 32 : 22;
       const label = el('text', {
         class: 'label',
-        x: horizontal ? mx : mx + (part.type === 'led' ? 30 : part.type === 'regulator' ? 32 : 22),
-        y: horizontal ? my - (part.type === 'led' ? 26 : part.type === 'regulator' ? 30 : 20) : my + 4,
-        'text-anchor': horizontal ? 'middle' : 'start',
+        x: horizontal ? mx : mx + (flipped ? -gap : gap),
+        y: horizontal ? my + (flipped ? 26 : -(part.type === 'led' ? 26 : part.type === 'regulator' ? 30 : 20)) : my + 4,
+        'text-anchor': horizontal ? 'middle' : flipped ? 'end' : 'start',
       }, g);
       const name_span = el('tspan', { class: 'name' }, label);
       name_span.textContent = name;
       if (value) {
-        const value_span = el('tspan', {}, label);
-        value_span.textContent = ` ${value}`;
+        // beside a vertical part each line of the value goes under the name, so the label stays narrow
+        const lines = [value].flat();
+        if (horizontal) el('tspan', {}, label).textContent = ` ${lines.join(' ')}`;
+        else {
+          for (const line of lines) el('tspan', { x: label.getAttribute('x'), dy: '1.25em' }, label).textContent = line;
+          label.setAttribute('y', my - 3 - (lines.length - 1) * 7);
+        }
       }
       if (part.type === 'switch') {
         const hint = el('text', { class: 'label', x: horizontal ? mx : mx + 22, y: horizontal ? my + 24 : my + 18, 'text-anchor': horizontal ? 'middle' : 'start' }, g);
@@ -534,22 +545,16 @@ function fit_view() {
     apply_view();
     return;
   }
-  let min_x = Infinity, min_y = Infinity, max_x = -Infinity, max_y = -Infinity;
-  for (const part of state.parts) {
-    const corners = [[part.x1, part.y1], [part.x2, part.y2]];
-    if (part.type === 'regulator') corners.push(adjust_point(part));
-    for (const [x, y] of corners) {
-      min_x = Math.min(min_x, x); max_x = Math.max(max_x, x); min_y = Math.min(min_y, y); max_y = Math.max(max_y, y);
-    }
-  }
-  const pad = 3.5;
-  const width = (max_x - min_x + pad * 2 + 3) * grid;
-  const height = (max_y - min_y + pad * 2) * grid;
+  // The drawn parts with their labels, in board units.
+  const box = parts_layer.getBBox();
+  const pad = 2.5 * grid;
+  const width = box.width + pad * 2;
+  const height = box.height + pad * 2 + 30;   // room for the probe flags
   const inspector_room = window.innerWidth > 760 ? 270 : 0;
   const usable = Math.max(200, rect.width - inspector_room);
   view.zoom = Math.max(0.4, Math.min(2.2, usable / width, rect.height / height));
-  const centre_x = ((min_x + max_x) / 2 + 1.5) * grid;
-  const centre_y = (min_y + max_y) / 2 * grid;
+  const centre_x = box.x + box.width / 2;
+  const centre_y = box.y + box.height / 2 - 15;
   view.x = centre_x - usable / 2 / view.zoom;
   view.y = centre_y - rect.height / 2 / view.zoom;
   apply_view();
@@ -597,6 +602,29 @@ function new_part(tool, start, end) {
     else { part.x1 = start.x - 2; part.x2 = start.x + 2; }
   }
   return part;
+}
+
+function smart_placement(tool, point) {
+  if (tool.type === 'wire' || tool.type === 'select' || tool.type === 'probe') return null;
+  return place_by_click(state.parts, tool.type, point, {
+    node: (key) => built?.point_node.get(key),
+    voltage: (key) => node_voltage_at(key) ?? 0,
+  });
+}
+
+function split_wire(wire, at) {
+  const index = state.parts.indexOf(wire);
+  if (index < 0) return;
+  state.parts.splice(index, 1,
+    { id: wire.id, type: 'wire', x1: wire.x1, y1: wire.y1, x2: at.x, y2: at.y },
+    { id: new_id(), type: 'wire', x1: at.x, y1: at.y, x2: wire.x2, y2: wire.y2 });
+}
+
+function reverse_part(part) {
+  if (!part || part.type === 'wire') return;
+  commit();
+  Object.assign(part, reversed(part));
+  changed();
 }
 
 function toggle(part) {
@@ -650,6 +678,7 @@ board.addEventListener('pointerdown', (event) => {
   board.setPointerCapture(event.pointerId);
   pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
   hide_tip();
+  hide_flip();
   if (pointers.size === 2) {
     const [a, b] = [...pointers.values()];
     drag = { mode: 'pinch', distance: Math.hypot(a.x - b.x, a.y - b.y), mid: { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 } };
@@ -698,7 +727,7 @@ board.addEventListener('pointerdown', (event) => {
 
 board.addEventListener('pointermove', (event) => {
   if (pointers.has(event.pointerId)) pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
-  if (!drag) { hover(event); return; }
+  if (!drag) { hover(event); preview_placement(event); return; }
   const world = to_world(event);
   const point = snap(world);
   switch (drag.mode) {
@@ -760,14 +789,19 @@ function finish_pointer(event) {
     const zero = start.x === end.x && start.y === end.y;
     if (!(tool.type === 'wire' && zero)) {
       commit();
+      const smart = zero ? smart_placement(tool, start) : null;
+      if (smart?.split) split_wire(smart.split, smart.anchor);
       const part = new_part(tool, start, end);
+      if (smart) Object.assign(part, { x1: smart.x1, y1: smart.y1, x2: smart.x2, y2: smart.y2 });
       state.parts.push(part);
+      preview_key = null;
       changed();
     }
   } else if (drag.mode === 'probe' && event.type === 'pointerup') {
     toggle_probe(drag.part || null, drag.point || null);
   } else if (drag.mode === 'move' && !drag.moved && event.type === 'pointerup') {
     if (['switch', 'logic'].includes(drag.part.type)) { commit(); toggle(drag.part); changed(); }
+    if (reversible.has(drag.part.type)) show_flip(drag.part);
   } else if (drag.mode === 'move' || drag.mode === 'end') {
     render_inspector();
   }
@@ -775,11 +809,83 @@ function finish_pointer(event) {
 }
 board.addEventListener('pointerup', finish_pointer);
 board.addEventListener('pointercancel', finish_pointer);
-board.addEventListener('pointerleave', () => { if (!drag) hide_tip(); });
+board.addEventListener('pointerleave', () => {
+  if (drag) return;
+  hide_tip();
+  if (!['select', 'probe', 'wire'].includes(state.tool)) { overlay.replaceChildren(); preview_key = null; }
+  schedule_hide_flip();
+});
+
+// ---------- Reverse button ----------
+
+const flip_button = $('#flip');
+const reversible = new Set(['diode', 'led', 'source', 'current', 'regulator', 'ground', 'rail', 'logic', 'capacitor']);
+let flip_part = null;
+let flip_timer = null;
+
+function show_flip(part) {
+  clearTimeout(flip_timer);
+  if (flip_part === part && !flip_button.hidden) return;
+  flip_part = part;
+  const rect = board.getBoundingClientRect();
+  const stage_rect = board.parentElement.getBoundingClientRect();
+  const to_screen = (x, y) => [(x * grid - view.x) * view.zoom + rect.left - stage_rect.left, (y * grid - view.y) * view.zoom + rect.top - stage_rect.top];
+  const horizontal = Math.abs(part.x2 - part.x1) >= Math.abs(part.y2 - part.y1);
+  const single_part = single_ended.has(part.type);
+  const [mx, my] = to_screen(single_part ? part.x1 : (part.x1 + part.x2) / 2, single_part ? part.y1 : (part.y1 + part.y2) / 2);
+  // On the same side as the part's label, just past it, where neighbouring parts don't reach.
+  const flipped = part.label_side === 'below' || part.label_side === 'left';
+  const side = flipped ? -1 : 1;
+  if (single_part || horizontal) {
+    flip_button.style.left = `${mx}px`;
+    flip_button.style.top = `${my + (single_part ? 34 : flipped ? -34 : 32) * view.zoom}px`;
+    flip_button.style.transform = 'translate(-50%, -50%)';
+  } else {
+    flip_button.style.left = `${mx + side * (part.type === 'led' ? 30 : 22) * view.zoom}px`;
+    flip_button.style.top = `${my + 30 * view.zoom}px`;
+    flip_button.style.transform = flipped ? 'translate(-100%, 0)' : 'none';
+  }
+  flip_button.hidden = false;
+}
+
+function hide_flip() { clearTimeout(flip_timer); flip_button.hidden = true; flip_part = null; }
+function schedule_hide_flip() { clearTimeout(flip_timer); flip_timer = setTimeout(hide_flip, 700); }
+
+flip_button.addEventListener('pointerenter', () => clearTimeout(flip_timer));
+flip_button.addEventListener('pointerleave', schedule_hide_flip);
+flip_button.addEventListener('click', () => {
+  const part = flip_part;
+  reverse_part(part);
+  flip_part = null;
+  if (part) show_flip(part);
+});
+
+let preview_key = null;
+function preview_placement(event) {
+  const tool = tool_of[state.tool];
+  if (!tool || ['select', 'probe', 'wire'].includes(tool.type)) return;
+  const point = snap(to_world(event));
+  const key = point_key(point.x, point.y);
+  if (key === preview_key) return;
+  preview_key = key;
+  overlay.replaceChildren();
+  const smart = smart_placement(tool, point);
+  if (!smart) return;
+  const part = { type: tool.type, x1: smart.x1, y1: smart.y1, x2: smart.x2, y2: smart.y2, ...(tool.make ? tool.make() : {}) };
+  draw_part(part, overlay, true);
+  el('circle', { class: 'handle', cx: smart.anchor.x * grid, cy: smart.anchor.y * grid, r: 4 }, overlay);
+}
 
 function draw_ghost() {
   overlay.replaceChildren();
   const { tool, start, end } = drag;
+  if (start.x === end.x && start.y === end.y) {
+    const smart = smart_placement(tool, start);
+    if (smart) {
+      draw_part({ type: tool.type, x1: smart.x1, y1: smart.y1, x2: smart.x2, y2: smart.y2, ...(tool.make ? tool.make() : {}) }, overlay, true);
+      return;
+    }
+  }
   const part = new_part(tool, start, end);
   if (tool.type === 'wire' && start.x === end.x && start.y === end.y) {
     el('circle', { class: 'handle', cx: start.x * grid, cy: start.y * grid, r: 4 }, overlay);
@@ -791,6 +897,7 @@ function draw_ghost() {
 
 board.addEventListener('wheel', (event) => {
   event.preventDefault();
+  hide_flip();
   const factor = Math.exp(-event.deltaY * (event.deltaMode === 1 ? 0.05 : 0.0015));
   zoom_at(event.clientX, event.clientY, factor);
 }, { passive: false });
@@ -817,6 +924,9 @@ function hover(event) {
     const part = part_at(event.target);
     if (part && !error) text = part_summary(part);
   }
+  const hovered = part_at(event.target);
+  if (hovered && state.tool === 'select' && reversible.has(hovered.type)) show_flip(hovered);
+  else if (flip_part) schedule_hide_flip();
   if (!text) { tip.hidden = true; return; }
   tip.textContent = text;
   tip.hidden = false;
@@ -1345,6 +1455,8 @@ function render_tools() {
 
 function set_tool(type) {
   state.tool = type;
+  preview_key = null;
+  hide_flip();
   overlay.replaceChildren();
   render_tools();
   render_board();
@@ -1360,6 +1472,7 @@ window.addEventListener('keydown', (event) => {
   if (key === 'Delete' || key === 'Backspace') { event.preventDefault(); delete_selected(); return; }
   if (key === ' ') { event.preventDefault(); set_running(!state.running); return; }
   if (key === 'f' || key === 'F') { fit_view(); return; }
+  if (key === 'x' || key === 'X') { reverse_part(selected_part()); return; }
   if (key === 'Escape') {
     if (drag?.mode === 'place') { drag = null; overlay.replaceChildren(); return; }
     state.selected = null; set_tool('select'); render_inspector(); return;

@@ -41,6 +41,7 @@
   <div class="stage" id="stage">
     <svg id="board" role="img" aria-label="Circuit board"></svg>
     <div id="tip" class="tip" hidden></div>
+    <button id="flip" class="flip" hidden title="Turn this part around (X)">⇄ Reverse</button>
     <div id="banner" class="banner" hidden></div>
     <div id="toast" class="toast" hidden></div>
     <aside id="inspector" class="inspector" aria-live="polite"></aside>
@@ -61,8 +62,11 @@
   <div class="help-body">
     <section>
       <h3>Drawing</h3>
-      <p>Pick a part on the left, then drag between two grid points. A click places it at the usual size.</p>
-      <p>Select a part to change its value. Drag it to move it, or drag one of its ends.</p>
+      <p>Pick a part on the left and click next to a point in the circuit. The part starts from that point and faces
+        the way it most likely should, which a faint preview shows before you click. A click on a wire joins the part
+        to the middle of it. To choose both ends yourself, drag between two grid points instead.</p>
+      <p>Hover over a diode or a source and click Reverse to turn it around. Select a part to change its value, or
+        drag it to move it.</p>
       <h3>Running</h3>
       <p>Click a switch or a logic input to flip it. With the probe tool, click a point to plot its voltage, or a part
         to plot its current.</p>
@@ -90,6 +94,7 @@
         <dt><kbd>Del</kbd></dt><dd>Delete</dd>
         <dt><kbd>Ctrl Z</kbd></dt><dd>Undo</dd>
         <dt><kbd>Space</kbd></dt><dd>Pause</dd>
+        <dt><kbd>X</kbd></dt><dd>Reverse</dd>
         <dt><kbd>Esc</kbd></dt><dd>Select tool</dd>
       </dl>
     </section>

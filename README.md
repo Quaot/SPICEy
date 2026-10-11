@@ -11,6 +11,9 @@ is coloured by its voltage, and dots move along it with the current. A scope plo
 - DC, sine, square and triangle sources, as two-terminal sources or as single supply rails.
 - Logic inputs, which can be set by hand or clocked. Clocked inputs at f, f/2, f/4 and so on count up in binary.
 - A four-channel scope for node voltages and part currents.
+- Click placement. A part clicked next to a point starts there and faces the likely way. Capacitors and LEDs hang
+  toward ground. Diodes put their anode on the higher side, and sources put their positive end on the point.
+  Hovering a part shows a button that turns it around.
 - Links that hold the whole circuit, so a circuit can be shared without a server.
 
 The examples include the 4-bit R-2R DAC from my
@@ -46,6 +49,7 @@ src/
   solver.js    sets up the circuit's equations and solves them at each step
   netlist.js   turns drawn parts into nodes, and works out wire currents
   parts.js     symbols and the fields each part can edit
+  placement.js where a part goes when it is placed with a click
   presets.js   the example circuits
   app.js       the editor, the drawing and the scope
 ```

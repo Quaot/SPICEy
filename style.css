@@ -159,6 +159,13 @@ button, input, select { font: inherit; color: inherit; }
 .inspector.folded { width: auto; padding: 8px 40px 8px 14px; }
 .inspector.folded > :not(.collapse):not(h2) { display: none; }
 
+.flip {
+  position: absolute; z-index: 6; border: 1px solid var(--line); background: var(--bg); color: var(--fg);
+  border-radius: 999px; padding: 4px 11px; font: 500 12px var(--sans); cursor: pointer; white-space: nowrap;
+  box-shadow: 0 4px 14px rgb(0 0 0 / .08);
+}
+.flip:hover { border-color: var(--fg); }
+.flip[hidden] { display: none; }
 .tip {
   position: absolute; pointer-events: none; z-index: 5;
   background: var(--fg); color: var(--bg); font: 500 12px var(--mono); padding: 5px 8px; border-radius: 6px;
