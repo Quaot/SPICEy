@@ -33,8 +33,8 @@ headroom, and the output falls away from 3.3 V on the scope.
 ## How it works
 
 The solver uses modified nodal analysis, the method at the heart of SPICE. It does not read SPICE netlists, though.
-Circuits are drawn, not typed. Each node voltage is an unknown, and so is the current through each voltage source,
-inductor and regulator. Every time step builds the matrix and solves it by Gaussian elimination with partial
+Circuits are drawn, not typed. Each node voltage is an unknown, and so is the current through each voltage source
+and inductor. The regulator adds one more. Every time step builds the matrix and solves it by Gaussian elimination with partial
 pivoting. That is fast enough here, since a drawn circuit rarely has more than a few dozen unknowns.
 
 Capacitors and inductors are replaced at each step by a conductance and a current source, using the trapezoidal
