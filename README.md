@@ -7,6 +7,8 @@ is coloured by its voltage, and dots move along it with the current. A scope plo
 
 **Try it:** [quaot.github.io/SPICEy](https://quaot.github.io/SPICEy/)
 
+![SPICEy running the 4-bit R-2R DAC, with the output stepping through all 16 codes on the scope](docs/dac.jpg)
+
 ## What it can do
 
 - Resistors, capacitors, inductors, diodes, LEDs and switches, plus an adjustable regulator like the LM1117.
@@ -25,6 +27,8 @@ through all 16 codes, from 0 to 3.09 V.
 They also include the 3.3 V regulator from my [LDO board](https://github.com/Quaot/2-layer-PCB-LDO), with its
 162 Ω and 267 Ω divider and a 500 mA load. The input sweeps down past 4.55 V, which is where the board runs out of
 headroom, and the output falls away from 3.3 V on the scope.
+
+![The LM1117 regulator example, with the input sweeping down and the output falling away below about 4.55 V](docs/ldo.jpg)
 
 ## How it works
 
