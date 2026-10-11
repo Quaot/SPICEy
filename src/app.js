@@ -546,15 +546,22 @@ function fit_view() {
     return;
   }
   // The drawn parts with their labels, in board units.
-  const box = parts_layer.getBBox();
+  const parts_box = parts_layer.getBBox();
+  const flags_box = state.probes.length ? probe_layer.getBBox() : parts_box;
+  const left = Math.min(parts_box.x, flags_box.x), top = Math.min(parts_box.y, flags_box.y);
+  const box = {
+    x: left, y: top,
+    width: Math.max(parts_box.x + parts_box.width, flags_box.x + flags_box.width) - left,
+    height: Math.max(parts_box.y + parts_box.height, flags_box.y + flags_box.height) - top,
+  };
   const pad = (rect.width < 500 ? 1 : 2.5) * grid;
   const width = box.width + pad * 2;
-  const height = box.height + pad * 2 + 30;   // room for the probe flags
+  const height = box.height + pad * 2;
   const inspector_room = window.innerWidth > 760 ? 270 : 0;
   const usable = Math.max(200, rect.width - inspector_room);
   view.zoom = Math.max(0.4, Math.min(2.2, usable / width, rect.height / height));
   const centre_x = box.x + box.width / 2;
-  const centre_y = box.y + box.height / 2 - 15;
+  const centre_y = box.y + box.height / 2;
   view.x = centre_x - usable / 2 / view.zoom;
   view.y = centre_y - rect.height / 2 / view.zoom;
   apply_view();
