@@ -4,8 +4,16 @@ export const point_key = (x, y) => `${x},${y}`;
 
 const single_ended = new Set(['ground', 'rail', 'logic']);
 
+// A regulator's ADJ pin sits two grid points to the right of the line from IN to OUT, below its middle.
+export function adjust_point(part) {
+  const dx = part.x2 - part.x1, dy = part.y2 - part.y1;
+  const length = Math.hypot(dx, dy) || 1;
+  return [Math.round((part.x1 + part.x2) / 2 - (dy / length) * 2), Math.round((part.y1 + part.y2) / 2 + (dx / length) * 2)];
+}
+
 export function part_points(part) {
   if (single_ended.has(part.type)) return [point_key(part.x1, part.y1)];
+  if (part.type === 'regulator') return [point_key(part.x1, part.y1), point_key(part.x2, part.y2), point_key(...adjust_point(part))];
   return [point_key(part.x1, part.y1), point_key(part.x2, part.y2)];
 }
 
@@ -78,7 +86,7 @@ export function build_netlist(parts) {
   };
 
   for (const part of parts) {
-    const [p1, p2] = part_points(part);
+    const [p1, p2, p3] = part_points(part);
     const n1 = point_node.get(p1);
     const n2 = p2 === undefined ? 0 : point_node.get(p2);
     switch (part.type) {
@@ -103,6 +111,9 @@ export function build_netlist(parts) {
         break;
       case 'current':  // pushes current out of terminal 2
         add(part, { kind: 'I', a: n1, b: n2, wave: part.wave }, p1, p2);
+        break;
+      case 'regulator':
+        add(part, { kind: 'REG', a: n1, b: n2, c: point_node.get(p3), vref: part.vref }, p1, p2);
         break;
       case 'rail':
         if (n1 === 0) problems.push({ id: part.id, message: 'This supply is wired straight to ground.' });

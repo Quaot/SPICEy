@@ -1,5 +1,5 @@
 import { Simulator, SolveError } from './solver.js';
-import { build_netlist, wire_currents, part_points, point_key } from './netlist.js';
+import { build_netlist, wire_currents, part_points, point_key, adjust_point } from './netlist.js';
 import { parse_value, format_value } from './units.js';
 import { grid, tools, tool_of, body_of, led_colors, value_fields, wave_fields, wave_from } from './parts.js';
 import { presets } from './presets.js';
@@ -119,7 +119,7 @@ function rebuild({ reset = false } = {}) {
     for (const element of sim.elements) {
       const old = old_by_id.get(element.id);
       if (!old || old.kind !== element.kind) continue;
-      for (const field of ['v_prev', 'i_prev', 'v_guess', 'current']) if (field in old) element[field] = old[field];
+      for (const field of ['v_prev', 'i_prev', 'v_guess', 'current', 'state']) if (field in old) element[field] = old[field];
     }
   }
   if (reset || !previous || scope_buffer.series.length !== state.probes.length) clear_scope();
@@ -246,7 +246,7 @@ function value_label(part) {
     if (wave.shape === 'dc') return format_value(wave.value, unit);
     const swing = wave.offset === 0
       ? `±${format_value(Math.abs(wave.amplitude), unit)}`
-      : `${format_value(wave.offset - Math.abs(wave.amplitude), '')}–${format_value(wave.offset + Math.abs(wave.amplitude), unit)}`;
+      : `${format_value(wave.offset - Math.abs(wave.amplitude), '')} to ${format_value(wave.offset + Math.abs(wave.amplitude), unit)}`;
     return `${wave.shape} ${swing} ${format_value(wave.frequency, 'Hz')}`;
   };
   switch (part.type) {
@@ -255,7 +255,6 @@ function value_label(part) {
     case 'inductor': return format_value(part.inductance, 'H');
     case 'source': return wave_label(part.wave, 'V');
     case 'current': return wave_label(part.wave, 'A');
-    case 'led': return part.color;
     default: return '';
   }
 }
@@ -312,6 +311,20 @@ function draw_part(part, parent, ghost = false) {
     if (body.glyph) {
       el('path', { class: 'body', d: body.glyph, transform: `translate(${(x1 + x2) / 2} ${(y1 + y2) / 2}) scale(${scale})` }, g);
     }
+    if (part.type === 'regulator') {
+      const adjust_lead = el('line', { class: 'lead', x1: length / 2, y1: 20 * scale, x2: length / 2, y2: 2 * grid }, inner);
+      refs.leads.push({ line: adjust_lead, end: 3 });
+      const world = (lx, ly) => [x1 + ux * lx - uy * ly, y1 + uy * lx + ux * ly];
+      const pin_text = (text, lx, ly, size = 'pin') => {
+        const [px, py] = world(lx, ly);
+        const node = el('text', { class: size, x: px, y: py + 3.5, 'text-anchor': 'middle' }, g);
+        node.textContent = text;
+      };
+      pin_text('LM1117', length / 2, 0, 'chip');
+      pin_text('IN', length / 2 - 32 * scale - 10, -8);
+      pin_text('OUT', length / 2 + 32 * scale + 12, -8);
+      pin_text('ADJ', length / 2 + 14, 32);
+    }
     if (body.contacts) {
       el('circle', { class: 'contact', cx: -14, cy: 0, r: 2.6 }, body_group);
       el('circle', { class: 'contact', cx: 14, cy: 0, r: 2.6 }, body_group);
@@ -323,8 +336,8 @@ function draw_part(part, parent, ghost = false) {
       const horizontal = Math.abs(ux) > Math.abs(uy);
       const label = el('text', {
         class: 'label',
-        x: horizontal ? mx : mx + (part.type === 'led' ? 30 : 22),
-        y: horizontal ? my - (part.type === 'led' ? 26 : 20) : my + 4,
+        x: horizontal ? mx : mx + (part.type === 'led' ? 30 : part.type === 'regulator' ? 32 : 22),
+        y: horizontal ? my - (part.type === 'led' ? 26 : part.type === 'regulator' ? 30 : 20) : my + 4,
         'text-anchor': horizontal ? 'middle' : 'start',
       }, g);
       const name_span = el('tspan', { class: 'name' }, label);
@@ -469,10 +482,10 @@ function paint(wall_dt) {
   for (const part of state.parts) {
     const refs = views.get(part.id);
     if (!refs) continue;
-    const [p1, p2] = part_points(part);
-    const v1 = error ? null : node_voltage_at(p1);
-    const v2 = p2 === undefined ? v1 : error ? null : node_voltage_at(p2);
-    for (const { line, end } of refs.leads) line.setAttribute('stroke', voltage_color(end === 1 ? v1 : v2, voltage_scale));
+    const points = part_points(part);
+    const v1 = error ? null : node_voltage_at(points[0]);
+    const end_voltage = (end) => (error ? null : points[end - 1] === undefined ? v1 : node_voltage_at(points[end - 1]));
+    for (const { line, end } of refs.leads) line.setAttribute('stroke', voltage_color(end_voltage(end), voltage_scale));
 
     if (part.type === 'led' && refs.glow) {
       const current = error ? 0 : element_current(part.id);
@@ -496,7 +509,8 @@ function paint(wall_dt) {
     let phase = (dot_phase.get(part.id) || 0) + (state.running ? rate * wall_dt : 0);
     phase = ((phase % spacing) + spacing) % spacing;
     dot_phase.set(part.id, phase);
-    const circle = (part.type === 'source' && part.wave.shape !== 'dc') || part.type === 'current' ? Math.min(body_of(part).half, length / 2) + 2 : 0;
+    const boxed = (part.type === 'source' && part.wave.shape !== 'dc') || part.type === 'current' || part.type === 'regulator';
+    const circle = boxed ? Math.min(body_of(part).half, length / 2) + 2 : 0;
     for (let s = phase; s < length; s += spacing) {
       if (circle && Math.abs(s - length / 2) < circle) continue;
       const x = x1 + ux * s, y = y1 + uy * s;
@@ -522,7 +536,9 @@ function fit_view() {
   }
   let min_x = Infinity, min_y = Infinity, max_x = -Infinity, max_y = -Infinity;
   for (const part of state.parts) {
-    for (const [x, y] of [[part.x1, part.y1], [part.x2, part.y2]]) {
+    const corners = [[part.x1, part.y1], [part.x2, part.y2]];
+    if (part.type === 'regulator') corners.push(adjust_point(part));
+    for (const [x, y] of corners) {
       min_x = Math.min(min_x, x); max_x = Math.max(max_x, x); min_y = Math.min(min_y, y); max_y = Math.max(max_y, y);
     }
   }
@@ -816,11 +832,18 @@ function part_readings(part) {
   return { across: v1 - v2, current, v1, v2 };
 }
 
+const regulator_states = { regulating: 'Regulating', dropout: 'In dropout', limit: 'At its current limit', off: 'Off' };
+
 function part_summary(part) {
   const name = part_names.get(part.id) || tool_of[part.type].name;
   const { across, current, v1 } = part_readings(part);
   if (part.type === 'wire' || part.type === 'switch') return `${name === 'Wire' ? 'wire' : name}  ${format_value(v1, 'V', 4)}\n${format_value(Math.abs(current ?? 0), 'A')}`;
   if (part.type === 'ground') return 'ground  0 V';
+  if (part.type === 'regulator') {
+    const { v2 } = part_readings(part);
+    return `${name}  ${format_value(v2, 'V', 4)} out
+${format_value(Math.abs(current ?? 0), 'A')}  ${regulator_states[sim_lookup.get(part.id)?.state] || ''}`;
+  }
   if (single_ended.has(part.type)) return `${name}  ${format_value(v1, 'V', 4)}\n${format_value(Math.abs(current ?? 0), 'A')}`;
   return `${name}  ${format_value(Math.abs(across), 'V', 4)}\n${format_value(Math.abs(current ?? 0), 'A')}`;
 }
@@ -929,10 +952,19 @@ function render_inspector() {
       readout.append(html('dt', {}, label), dd);
       live_fields.push({ dd, read });
     };
-    if (single_ended.has(part.type) || part.type === 'wire') live('Voltage', () => format_value(part_readings(part).v1, 'V', 4));
+    if (part.type === 'regulator') {
+      live('State', () => regulator_states[sim_lookup.get(part.id)?.state] || '—');
+      live('Input', () => format_value(part_readings(part).v1, 'V', 4));
+      live('Output', () => format_value(part_readings(part).v2, 'V', 4));
+      live('Current', () => format_value(part_readings(part).current ?? 0, 'A', 4));
+      live('Heat', () => {
+        const { across, current } = part_readings(part);
+        return format_value(Math.max(0, across * (current ?? 0)), 'W', 3);
+      });
+    } else if (single_ended.has(part.type) || part.type === 'wire') live('Voltage', () => format_value(part_readings(part).v1, 'V', 4));
     else live('Across', () => format_value((part.type === 'source' ? -1 : 1) * part_readings(part).across, 'V', 4));
-    live('Current', () => format_value(part_readings(part).current ?? 0, 'A', 4));
-    if (!['wire', 'switch'].includes(part.type)) {
+    if (part.type !== 'regulator') live('Current', () => format_value(part_readings(part).current ?? 0, 'A', 4));
+    if (!['wire', 'switch', 'regulator'].includes(part.type)) {
       live('Power', () => {
         const { across, current, v1 } = part_readings(part);
         const volts = single_ended.has(part.type) ? v1 : across;
@@ -957,10 +989,19 @@ function render_inspector() {
 }
 
 function render_circuit_panel() {
-  const preset = presets.find((item) => item.note === state.note);
-  inspector.append(html('h2', {}, preset ? preset.name : 'Circuit'));
-  if (state.note) inspector.append(html('p', {}, state.note));
-  else inspector.append(html('p', {}, 'Pick a part on the left and drag on the grid to place it. Select a part to edit it.'));
+  const index = presets.findIndex((item) => item.note === state.note);
+  const preset = presets[index];
+  inspector.append(html('p', { class: 'kicker' }, preset ? `Example ${String(index + 1).padStart(2, '0')} of ${String(presets.length).padStart(2, '0')}` : 'Your circuit'));
+  inspector.append(html('h2', { class: 'example' }, preset ? preset.name : 'Circuit'));
+  if (preset) {
+    inspector.append(html('p', { class: 'note' }, preset.note));
+    const try_it = html('p', { class: 'try' });
+    try_it.append(html('b', {}, 'Try this'), document.createTextNode(preset.try));
+    inspector.append(try_it);
+  } else {
+    inspector.append(html('p', { class: 'note' }, 'Pick a part on the left and drag between two grid points to place it. Select a part to change it.'));
+  }
+  inspector.append(html('p', { class: 'kicker section' }, 'Simulation'));
   inspector.append(field_row('Time step', state.settings.timestep, 's', (value) => {
     if (value <= 0) return;
     commit(); state.settings.timestep = value; changed();
@@ -1178,6 +1219,44 @@ $('#clear').addEventListener('click', () => {
 });
 
 const help = $('#help-dialog');
+
+// ---------- Title page ----------
+
+const intro = $('#intro');
+let has_saved_circuit = false;
+
+function render_intro() {
+  const list = $('#intro-examples');
+  list.replaceChildren();
+  presets.forEach((preset, index) => {
+    const item = html('li');
+    const button = html('button');
+    button.append(html('span', { class: 'number' }, String(index + 1).padStart(2, '0')));
+    const words = html('span');
+    words.append(html('span', { class: 'name' }, preset.name), html('span', { class: 'blurb' }, preset.blurb));
+    button.append(words, html('span', { class: 'arrow', 'aria-hidden': 'true' }, '→'));
+    button.addEventListener('click', () => { close_intro(); commit(); load_preset(preset); });
+    item.append(button);
+    list.append(item);
+  });
+  $('#intro-continue').hidden = !has_saved_circuit;
+}
+
+function open_intro() {
+  render_intro();
+  intro.hidden = false;
+  $('#intro-start').focus();
+}
+
+function close_intro() {
+  intro.hidden = true;
+  fit_view();
+}
+
+$('#brand').addEventListener('click', open_intro);
+$('#intro-start').addEventListener('click', () => { close_intro(); commit(); load_preset(presets[0]); });
+$('#intro-continue').addEventListener('click', close_intro);
+$('#intro-blank').addEventListener('click', () => { close_intro(); $('#clear').click(); });
 for (const button of document.querySelectorAll('[data-help]')) button.addEventListener('click', () => help.showModal());
 
 const toast = $('#toast');
@@ -1239,6 +1318,7 @@ function tool_icon(tool) {
   if (tool.type === 'wire') { el('path', { d: 'M-14 0 H14' }, svg); el('circle', { cx: -14, cy: 0, r: 1.8, class: 'fill' }, svg); el('circle', { cx: 14, cy: 0, r: 1.8, class: 'fill' }, svg); return svg; }
   if (tool.type === 'ground') { el('path', { d: 'M0 -9 V0 M-9 0 H9 M-5.5 4 H5.5 M-2 8 H2' }, svg); return svg; }
   if (tool.type === 'rail') { el('path', { d: 'M0 9 V-3' }, svg); el('circle', { cx: 0, cy: -5, r: 2.5, class: 'fill' }, svg); el('path', { d: 'M5 -6 h6 M8 -9 v6' }, svg); return svg; }
+  if (tool.type === 'regulator') { el('rect', { x: -7, y: -8, width: 14, height: 11, rx: 1.5 }, svg); el('path', { d: 'M-17 -2.5 H-7 M7 -2.5 H17 M0 3 V10' }, svg); return svg; }
   if (tool.type === 'logic') { el('rect', { x: -9, y: -7, width: 18, height: 14, rx: 3 }, svg); el('path', { d: 'M0 -3.5 V3.5 M-1.5 -2.5 L0 -3.5' }, svg); return svg; }
   const body = body_of(stub);
   const scale = Math.min(1, 12 / Math.max(body.half, 1));
@@ -1272,6 +1352,7 @@ function set_tool(type) {
 
 window.addEventListener('keydown', (event) => {
   if (event.target.closest?.('input, select, textarea') || help.open) return;
+  if (!intro.hidden) { if (event.key === 'Escape') close_intro(); return; }
   const key = event.key;
   if ((event.ctrlKey || event.metaKey) && key.toLowerCase() === 'z') { event.preventDefault(); event.shiftKey ? redo() : undo(); return; }
   if ((event.ctrlKey || event.metaKey) && key.toLowerCase() === 'y') { event.preventDefault(); redo(); return; }
@@ -1313,6 +1394,7 @@ let frame_count = 0;
 function frame(now) {
   const wall_dt = Math.min(0.05, (now - last_frame) / 1000);
   last_frame = now;
+  if (!intro.hidden) { requestAnimationFrame(frame); return; }
   advance(wall_dt);
   paint(wall_dt);
   draw_scope();
@@ -1347,9 +1429,10 @@ async function start() {
   if (!loaded) {
     try {
       const saved = localStorage.getItem(storage_key);
-      if (saved) { restore(saved); loaded = true; }
+      if (saved) { restore(saved); loaded = true; has_saved_circuit = true; }
     } catch { /* storage may be off */ }
   }
+  if (!hash) open_intro();
   if (loaded) {
     const preset = presets.find((item) => item.note && item.note === state.note);
     preset_select.value = preset ? preset.id : '';

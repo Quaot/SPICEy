@@ -274,3 +274,60 @@ test('settle leaves time and state alone', () => {
   sim.settle(1e-5);
   assert.deepEqual([sim.time, sim.elements[2].v_prev], before);
 });
+
+// The LM1117-ADJ board: 162 Ω from OUT to ADJ, 267 Ω from ADJ to ground.
+function regulator(v_in, load) {
+  return new Simulator({ node_count: 4, elements: [
+    { id: 'v', kind: 'V', a: 1, b: 0, wave: dc(v_in) },
+    { id: 'u', kind: 'REG', a: 1, b: 2, c: 3 },
+    { id: 'r1', kind: 'R', a: 2, b: 3, resistance: 162 },
+    { id: 'r2', kind: 'R', a: 3, b: 0, resistance: 267 },
+    { id: 'load', kind: 'R', a: 2, b: 0, resistance: load },
+  ] });
+}
+
+test('regulator sets 1.25 × (1 + 267/162) plus the ADJ current term', () => {
+  const sim = regulator(5, 6.6);
+  sim.operating_point();
+  close(sim.voltage(2), 1.25 * (1 + 267 / 162) + 60e-6 * 267, 1e-6);
+  assert.equal(sim.elements[1].state, 'regulating');
+});
+
+test('regulator drops out below about 4.55 V at 500 mA', () => {
+  const holding = regulator(4.7, 6.6);
+  holding.operating_point();
+  assert.equal(holding.elements[1].state, 'regulating');
+  const dropping = regulator(4.4, 6.6);
+  dropping.operating_point();
+  assert.equal(dropping.elements[1].state, 'dropout');
+  const current = dropping.elements[1].current;
+  close(dropping.voltage(2), 4.4 - (1.0 + 0.5 * current), 1e-6);
+  assert.ok(dropping.voltage(2) < 3.3);
+});
+
+test('regulator with no load stays on through its own divider', () => {
+  const sim = regulator(5, 1e9);
+  sim.operating_point();
+  assert.equal(sim.elements[1].state, 'regulating');
+  close(sim.elements[1].current, 3.326 / 429, 2e-4);
+});
+
+test('LDO example holds 3.3 V at 5 V in and loses it below 4.55 V', async () => {
+  const { presets } = await import('../src/presets.js');
+  const preset = presets.find((item) => item.id === 'ldo');
+  const parts = preset.parts.map((item, i) => ({ id: `p${i}`, ...item }));
+  const built = build_netlist(parts);
+  assert.deepEqual(built.problems, []);
+  const sim = new Simulator(built.netlist);
+  const out = built.point_node.get('13,2');
+  const input = built.point_node.get('0,2');
+  let held = null, lowest_held = Infinity;
+  for (let i = 0; i < 10000; i++) {
+    sim.step(preset.settings.timestep);
+    const v_in = sim.voltage(input), v_out = sim.voltage(out);
+    if (sim.time > 0.1 && Math.abs(v_in - 5) < 0.02) held = v_out;
+    if (sim.time > 0.1 && Math.abs(v_out - 3.326) < 2e-3) lowest_held = Math.min(lowest_held, v_in);
+  }
+  close(held, 3.326, 3e-3, 'output at 5 V in');
+  assert.ok(lowest_held > 4.5 && lowest_held < 4.62, `regulates down to ${lowest_held} V`);
+});

@@ -83,6 +83,34 @@ function limit_junction(v_new, v_old, n_vt, v_crit) {
   return v_new;
 }
 
+function regulator_state(element, solution) {
+  const at = (node) => (node ? solution[node - 1] : 0);
+  const v_in = at(element.a), v_out = at(element.b), v_adj = at(element.c);
+  const current = solution[element.branch];
+  const headroom = v_in - v_out - (element.dropout + element.dropout_slope * Math.max(current, 0));
+  const above_setting = v_out - v_adj - element.vref;
+  const tolerance = 1e-9;
+  switch (element.state) {
+    case 'regulating':
+      if (current < -tolerance) return 'off';
+      if (current > element.limit) return 'limit';
+      if (headroom < -tolerance) return 'dropout';
+      return 'regulating';
+    case 'dropout':
+      if (current < -tolerance) return 'off';
+      if (current > element.limit) return 'limit';
+      if (above_setting > tolerance) return 'regulating';
+      return 'dropout';
+    case 'limit':
+      if (above_setting > tolerance) return 'regulating';
+      if (headroom < -tolerance) return 'dropout';
+      return 'limit';
+    default:
+      if (above_setting < -tolerance && headroom > 0) return 'regulating';
+      return 'off';
+  }
+}
+
 export class Simulator {
   // netlist: { node_count, elements: [{ id, kind, a, b, ...}] }, node_count counts ground.
   constructor(netlist) {
@@ -91,13 +119,21 @@ export class Simulator {
     this.time = 0;
     this.branch_count = 0;
     for (const element of this.elements) {
-      if (element.kind === 'V' || element.kind === 'L') element.branch = this.node_count - 1 + this.branch_count++;
+      if (element.kind === 'V' || element.kind === 'L' || element.kind === 'REG') element.branch = this.node_count - 1 + this.branch_count++;
       if (element.kind === 'C' || element.kind === 'L') { element.v_prev = 0; element.i_prev = 0; }
       if (element.kind === 'D') {
         element.saturation = element.saturation ?? 1e-14;
         element.n_vt = (element.emission ?? 1) * thermal_voltage;
         element.v_crit = element.n_vt * Math.log(element.n_vt / (Math.SQRT2 * element.saturation));
         element.v_guess = 0;
+      }
+      if (element.kind === 'REG') {
+        element.vref = element.vref ?? 1.25;
+        element.adj_current = element.adj_current ?? 60e-6;
+        element.dropout = element.dropout ?? 1.0;
+        element.dropout_slope = element.dropout_slope ?? 0.5;
+        element.limit = element.limit ?? 1.2;
+        element.state = 'regulating';
       }
       element.current = 0;
     }
@@ -170,6 +206,30 @@ export class Simulator {
           rhs[k] -= z * element.i_prev + (mode === 'trap' ? element.v_prev : 0);
           break;
         }
+        case 'REG': {
+          // An adjustable regulator such as the LM1117-ADJ: a = IN, b = OUT, c = ADJ. The branch current runs from
+          // IN to OUT. Its equation depends on the state: holding OUT at vref above ADJ, in dropout, at its current
+          // limit, or off when the load pushes OUT above its setting.
+          const k = element.branch;
+          const { a: input, b: output, c: adjust } = element;
+          if (input) matrix[input - 1][k] += 1;
+          if (output) matrix[output - 1][k] -= 1;
+          inject(adjust, input, element.adj_current);
+          if (element.state === 'regulating') {
+            if (output) matrix[k][output - 1] += 1;
+            if (adjust) matrix[k][adjust - 1] -= 1;
+            rhs[k] = element.vref;
+          } else if (element.state === 'dropout') {
+            if (input) matrix[k][input - 1] += 1;
+            if (output) matrix[k][output - 1] -= 1;
+            matrix[k][k] -= element.dropout_slope;
+            rhs[k] = element.dropout;
+          } else {
+            matrix[k][k] = 1;
+            rhs[k] = element.state === 'limit' ? element.limit : 0;
+          }
+          break;
+        }
         case 'D': {
           const v = element.v_guess;
           const x = v / element.n_vt;
@@ -185,7 +245,7 @@ export class Simulator {
   }
 
   solve_point(mode, dt, time) {
-    const nonlinear = this.elements.some((element) => element.kind === 'D');
+    const nonlinear = this.elements.some((element) => element.kind === 'D' || element.kind === 'REG');
     const iterations = nonlinear ? 200 : 1;
     let solution = null;
     for (let iteration = 0; iteration < iterations; iteration++) {
@@ -194,6 +254,11 @@ export class Simulator {
       if (!nonlinear) break;
       let converged = true;
       for (const element of this.elements) {
+        if (element.kind === 'REG') {
+          const next = regulator_state(element, solution);
+          if (next !== element.state) { element.state = next; converged = false; }
+          continue;
+        }
         if (element.kind !== 'D') continue;
         const va = element.a ? solution[element.a - 1] : 0;
         const vb = element.b ? solution[element.b - 1] : 0;
@@ -232,6 +297,7 @@ export class Simulator {
           element.i_prev = element.current;
           break;
         }
+        case 'REG': element.current = solution[element.branch]; break;
         case 'D':
           element.current = element.saturation * (junction_exp(v / element.n_vt) - 1);
           break;

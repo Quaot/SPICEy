@@ -14,6 +14,7 @@ export const tools = [
   { type: 'current', name: 'Current source', short: 'Current', key: 'i', prefix: 'I', make: () => ({ wave: dc(1e-3) }), upright: true },
   { type: 'diode', name: 'Diode', key: 'd', prefix: 'D', make: () => ({}) },
   { type: 'led', name: 'LED', key: 'e', prefix: 'LED', make: () => ({ color: 'red' }) },
+  { type: 'regulator', name: 'Regulator', short: 'Regulator', key: 'u', prefix: 'U', make: () => ({ vref: 1.25 }) },
   { type: 'switch', name: 'Switch', key: 's', prefix: 'S', make: () => ({ closed: false }) },
   { type: 'ground', name: 'Ground', key: 'g', single: true, down: true },
   { type: 'rail', name: 'Supply', key: 'p', prefix: 'P', make: () => ({ wave: dc(5) }), single: true },
@@ -54,6 +55,7 @@ export function body_of(part) {
       if (part.wave.shape === 'dc') return { half: 6, d: 'M6 -14 V14 M-6 -7 V7', thick: true };
       return { half: 16, d: 'M16 0 A16 16 0 1 1 -16 0 A16 16 0 1 1 16 0', glyph: wave_glyph[part.wave.shape] };
     }
+    case 'regulator': return { half: 32, d: 'M-32 -20 H32 V20 H-32 Z' };
     case 'current': return { half: 15, d: 'M15 0 A15 15 0 1 1 -15 0 A15 15 0 1 1 15 0 M-8 0 H8 M3 -5 L8.5 0 L3 5' };
     default: return { half: 0, d: '' };
   }
@@ -63,6 +65,7 @@ export const value_fields = {
   resistor: [{ field: 'resistance', label: 'Resistance', unit: 'Ω' }],
   capacitor: [{ field: 'capacitance', label: 'Capacitance', unit: 'F' }],
   inductor: [{ field: 'inductance', label: 'Inductance', unit: 'H' }],
+  regulator: [{ field: 'vref', label: 'Reference', unit: 'V' }],
 };
 
 export function wave_fields(wave, unit) {

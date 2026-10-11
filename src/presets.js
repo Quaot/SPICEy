@@ -15,8 +15,9 @@ export const presets = [
   {
     id: 'r2r-dac',
     name: '4-bit R-2R DAC',
-    note: 'Four logic inputs drive a 10 kΩ / 20 kΩ ladder. A binary counter steps the output through all 16 codes, '
-      + 'so the scope shows a staircase from 0 to 3.09 V. Click an input to set it by hand.',
+    blurb: 'A counter steps a 10k and 20k ladder through 16 codes',
+    note: 'Four logic inputs drive a ladder of 10 kΩ and 20 kΩ resistors. A binary counter runs the inputs, so the output climbs from 0 to 3.09 V in 16 even steps.',
+    try: 'Click an input to stop its clock and set it by hand.',
     settings: { timestep: 5e-6, span: 16e-3 },
     parts: (() => {
       const items = [];
@@ -36,9 +37,41 @@ export const presets = [
     probes: [volts(20, 5)],
   },
   {
+    id: 'ldo',
+    name: 'LM1117 3.3 V regulator',
+    blurb: 'My 3.3 V board, swept into dropout',
+    note: 'The LM1117 regulator from my LDO board, with its 162 Ω and 267 Ω divider and a 500 mA load. The input sweeps from 4.2 to 5.8 V, and below about 4.55 V the regulator runs out of headroom.',
+    try: 'Open the switch to take the load off. The output then holds until the input is near 4.3 V.',
+    settings: { timestep: 1e-4, span: 1 },
+    parts: [
+      part('source', 0, 10, 0, 6, { wave: { shape: 'triangle', offset: 5, amplitude: 0.8, frequency: 2 } }),
+      wire(0, 6, 0, 2), wire(0, 2, 4, 2),
+      part('capacitor', 4, 2, 4, 6, { capacitance: 22e-6 }), wire(4, 6, 4, 10),
+      wire(4, 2, 7, 2),
+      part('regulator', 7, 2, 13, 2, { vref: 1.25 }),
+      wire(13, 2, 16, 2),
+      part('resistor', 16, 2, 16, 6, { resistance: 162 }),
+      wire(10, 4, 10, 6), wire(10, 6, 16, 6),
+      part('resistor', 16, 6, 16, 10, { resistance: 267 }),
+      wire(16, 2, 22, 2),
+      part('capacitor', 22, 2, 22, 6, { capacitance: 15e-6 }), wire(22, 6, 22, 10),
+      wire(22, 2, 28, 2),
+      part('resistor', 28, 2, 28, 6, { resistance: 432 }),
+      part('led', 28, 6, 28, 10, { color: 'red' }),
+      wire(28, 2, 34, 2),
+      part('switch', 34, 2, 34, 6, { closed: true }),
+      part('resistor', 34, 6, 34, 10, { resistance: 6.6 }),
+      wire(0, 10, 4, 10), wire(4, 10, 16, 10), wire(16, 10, 22, 10), wire(22, 10, 28, 10), wire(28, 10, 34, 10),
+      ground(0, 10),
+    ],
+    probes: [volts(0, 2), volts(13, 2)],
+  },
+  {
     id: 'divider',
     name: 'Voltage divider',
-    note: 'The output is 9 V × 4.7k / (10k + 4.7k) = 2.88 V. Select a resistor to change its value.',
+    blurb: 'Two resistors split 9 V',
+    note: 'Two resistors split 9 V. The output is 9 × 4.7 / (10 + 4.7), which is 2.88 V.',
+    try: 'Select a resistor and change its value.',
     settings: { timestep: 1e-4, span: 0.2 },
     parts: [
       part('source', 0, 7, 0, 3, { wave: dc(9) }),
@@ -53,8 +86,9 @@ export const presets = [
   {
     id: 'charging',
     name: 'Capacitor charging',
-    note: 'Close the switch to charge 100 µF through 1 kΩ (τ = 0.1 s). Open it and the 10 kΩ bleeder '
-      + 'discharges the capacitor ten times more slowly.',
+    blurb: '100 µF through 1 kΩ, with a switch',
+    note: 'A 1 kΩ resistor charges 100 µF with a time constant of 0.1 s. A 10 kΩ bleeder sits across the capacitor.',
+    try: 'Close the switch to charge it. Open it again and it discharges ten times more slowly.',
     settings: { timestep: 5e-4, span: 3 },
     parts: [
       part('source', 0, 6, 0, 2, { wave: dc(5) }),
@@ -72,8 +106,9 @@ export const presets = [
   {
     id: 'low-pass',
     name: 'RC low-pass filter',
-    note: 'A 1 kHz square wave through 1 kΩ into 220 nF. The time constant is 220 µs, so the output '
-      + 'rounds off each edge.',
+    blurb: 'A square wave with its edges rounded off',
+    note: 'A 1 kHz square wave goes through 1 kΩ into 220 nF. The time constant is 220 µs, so each edge comes out rounded.',
+    try: 'Make the capacitor smaller and the edges sharpen.',
     settings: { timestep: 2e-6, span: 4e-3 },
     parts: [
       part('source', 0, 6, 0, 2, { wave: { shape: 'square', offset: 2.5, amplitude: 2.5, frequency: 1000, duty: 0.5 } }),
@@ -88,8 +123,9 @@ export const presets = [
   {
     id: 'rlc',
     name: 'RLC ringing',
-    note: '10 mH and 1 µF resonate at 1.59 kHz. With 20 Ω in series the damping ratio is 0.1, so every edge of the '
-      + 'square wave sets the capacitor ringing.',
+    blurb: 'A tank that rings at 1.59 kHz',
+    note: '10 mH and 1 µF resonate at 1.59 kHz. The 20 Ω resistor gives a damping ratio of 0.1, so every edge of the square wave sets the capacitor ringing.',
+    try: 'Raise the resistor to 200 Ω and the ringing dies out.',
     settings: { timestep: 2e-6, span: 10e-3 },
     parts: [
       part('source', 0, 6, 0, 2, { wave: { shape: 'square', offset: 2.5, amplitude: 2.5, frequency: 200, duty: 0.5 } }),
@@ -105,8 +141,9 @@ export const presets = [
   {
     id: 'rectifier',
     name: 'Half-wave rectifier',
-    note: 'A 60 Hz, 10 V sine through a diode into 100 µF and a 1 kΩ load. The capacitor carries the load between '
-      + 'peaks, and the ripple is about 1.5 V.',
+    blurb: 'A diode and a capacitor turn AC into DC',
+    note: 'A 60 Hz sine of 10 V goes through a diode into 100 µF and a 1 kΩ load. The capacitor carries the load between peaks.',
+    try: 'Swap in 470 µF for a flatter output.',
     settings: { timestep: 2e-5, span: 0.05 },
     parts: [
       part('source', 0, 6, 0, 2, { wave: { shape: 'sine', offset: 0, amplitude: 10, frequency: 60 } }),
@@ -124,7 +161,9 @@ export const presets = [
   {
     id: 'led',
     name: 'LED and resistor',
-    note: 'Close the switch. A red LED drops about 2 V, so 150 Ω sets the current near 20 mA. Try 1 kΩ and watch it dim.',
+    blurb: '20 mA through a red LED',
+    note: 'A red LED drops about 2 V, so 150 Ω from 5 V sets the current near 20 mA.',
+    try: 'Close the switch. Then try 1 kΩ and watch it dim.',
     settings: { timestep: 1e-4, span: 0.2 },
     parts: [
       part('rail', 0, 2, 0, 1, { wave: dc(5) }),
