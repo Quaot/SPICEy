@@ -547,7 +547,7 @@ function fit_view() {
   }
   // The drawn parts with their labels, in board units.
   const box = parts_layer.getBBox();
-  const pad = 2.5 * grid;
+  const pad = (rect.width < 500 ? 1 : 2.5) * grid;
   const width = box.width + pad * 2;
   const height = box.height + pad * 2 + 30;   // room for the probe flags
   const inspector_room = window.innerWidth > 760 ? 270 : 0;
