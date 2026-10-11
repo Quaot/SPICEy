@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Kirchhoff</title>
+<meta name="description" content="A circuit simulator in the browser. Draw a circuit and watch the voltages and currents move.">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Inter+Tight:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="bar">
+  <h1 class="brand"><em>Kirchhoff</em></h1>
+  <label class="preset">
+    <span class="sr">Example circuit</span>
+    <select id="preset"></select>
+  </label>
+  <button class="pill ghost round help-small" data-help aria-label="Help">?</button>
+  <div class="transport">
+    <button id="run" class="pill" title="Pause or run (Space)">Pause</button>
+    <button id="reset" class="pill ghost" title="Start again from zero">Reset</button>
+    <label class="speed" title="How much simulated time passes each second">
+      <span class="sr">Speed</span>
+      <input id="speed" type="range" min="-2" max="2" step="0.05" value="0">
+      <output id="speed-out">—</output>
+    </label>
+    <output id="clock" class="clock">t = 0</output>
+  </div>
+  <div class="actions">
+    <button id="clear" class="pill ghost" title="Start an empty circuit">New</button>
+    <button id="share" class="pill ghost" title="Copy a link to this circuit">Share</button>
+    <button id="help" class="pill ghost round" data-help title="How to use it" aria-label="Help">?</button>
+  </div>
+</header>
+
+<div class="work">
+  <nav id="tools" class="tools" aria-label="Parts"></nav>
+  <div class="stage" id="stage">
+    <svg id="board" role="img" aria-label="Circuit board"></svg>
+    <div id="tip" class="tip" hidden></div>
+    <div id="banner" class="banner" hidden></div>
+    <div id="toast" class="toast" hidden></div>
+    <aside id="inspector" class="inspector" aria-live="polite"></aside>
+  </div>
+</div>
+
+<section class="scope" aria-label="Scope">
+  <div id="legend" class="legend"></div>
+  <canvas id="scope"></canvas>
+</section>
+
+<dialog id="help-dialog" class="help">
+  <h2><em>Kirchhoff</em></h2>
+  <p>A circuit simulator. Wires are coloured by voltage, orange above ground and blue below, and the moving dots
+    show which way current flows and roughly how much.</p>
+  <dl>
+    <dt>Place a part</dt><dd>Pick it on the left, then drag from one grid point to another. A click places it at the
+      default size.</dd>
+    <dt>Edit</dt><dd>Select a part to change its value. Drag a part to move it, or drag one of its ends.</dd>
+    <dt>Switches and inputs</dt><dd>Click them to flip them.</dd>
+    <dt>Scope</dt><dd>With the probe tool, click a point to plot its voltage or a part to plot its current.</dd>
+    <dt>Move around</dt><dd>Drag empty space to pan and scroll to zoom. F fits the circuit to the screen.</dd>
+    <dt>Keys</dt><dd>W wire, R resistor, C capacitor, L inductor, V source, I current source, D diode, E LED,
+      S switch, G ground, P supply, N logic input, O probe. Delete removes, Ctrl+Z undoes, Space pauses.</dd>
+  </dl>
+  <p class="small">It solves the circuit with modified nodal analysis, using the trapezoidal rule for capacitors and
+    inductors and Newton's method for diodes. The source is on
+    <a href="https://github.com/Quaot/kirchhoff">GitHub</a>.</p>
+  <form method="dialog"><button class="pill">Close</button></form>
+</dialog>
+
+<script type="module" src="src/app.js"></script>
+</body>
+</html>

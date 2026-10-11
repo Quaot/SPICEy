@@ -1,0 +1,9 @@
+{
+  "name": "kirchhoff",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test test/solver.test.js",
+    "serve": "python -m http.server 8010"
+  }
+}
