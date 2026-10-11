@@ -1,9 +1,11 @@
-# Kirchhoff
+<img src="logo.svg" width="72" alt="">
 
-A circuit simulator that runs in the browser. You draw a circuit on a grid and it is solved as it runs. Each wire
+# SPICEy
+
+A SPICE-style circuit simulator for the browser. You draw a circuit on a grid and it is solved as it runs. Each wire
 is coloured by its voltage, and dots move along it with the current. A scope plots any point you probe.
 
-**Try it:** [quaot.github.io/kirchhoff](https://quaot.github.io/kirchhoff/)
+**Try it:** [quaot.github.io/SPICEy](https://quaot.github.io/SPICEy/)
 
 ## What it can do
 
@@ -26,7 +28,7 @@ headroom, and the output falls away from 3.3 V on the scope.
 
 ## How it works
 
-The solver uses modified nodal analysis. Each node voltage is an unknown, and so is the current through each
+The solver uses modified nodal analysis, the method at the heart of SPICE. It does not read SPICE netlists, though. Circuits are drawn, not typed. Each node voltage is an unknown, and so is the current through each
 voltage source and inductor. Every time step builds the matrix and solves it by Gaussian elimination with partial
 pivoting. That is fast enough here, since a drawn circuit rarely has more than a few dozen unknowns.
 

@@ -8,7 +8,8 @@ import { place_by_click, reversed } from './placement.js';
 const svg_ns = 'http://www.w3.org/2000/svg';
 const $ = (selector) => document.querySelector(selector);
 const single_ended = new Set(['ground', 'rail', 'logic']);
-const storage_key = 'kirchhoff:circuit';
+const storage_key = 'spicey:circuit';
+const old_storage_key = 'kirchhoff:circuit';
 
 function el(name, attributes = {}, parent = null) {
   const node = document.createElementNS(svg_ns, name);
@@ -1548,7 +1549,7 @@ async function start() {
   }
   if (!loaded) {
     try {
-      const saved = localStorage.getItem(storage_key);
+      const saved = localStorage.getItem(storage_key) ?? localStorage.getItem(old_storage_key);
       if (saved) { restore(saved); loaded = true; has_saved_circuit = true; }
     } catch { /* storage may be off */ }
   }

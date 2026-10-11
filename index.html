@@ -3,8 +3,10 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Kirchhoff</title>
-<meta name="description" content="A circuit simulator in the browser. Draw a circuit and watch the voltages and currents move.">
+<title>SPICEy, a SPICE-style circuit simulator for the browser</title>
+<meta name="description" content="SPICEy, a SPICE-style circuit simulator for the browser. Draw a circuit and watch the voltages and currents move.">
+<meta property="og:title" content="SPICEy">
+<meta property="og:description" content="A SPICE-style circuit simulator for the browser.">
 <link rel="icon" href="icon.svg" type="image/svg+xml">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -13,7 +15,7 @@
 </head>
 <body>
 <header class="bar">
-  <h1 class="brand"><button id="brand" title="Back to the title page"><em>Kirchhoff</em></button></h1>
+  <h1 class="brand"><button id="brand" title="Back to the title page"><svg class="mark small" viewBox="0 0 64 64" aria-hidden="true"><path class="pepper" d="M41 19c8 3 10.5 12.5 6.5 21C42 51.5 28 58 10 56.5c13-4.5 21-12.5 24.5-23C36.5 27.5 36 21 41 19z"/><path class="lead" d="M41 19c-1-3.5 1.5-7 6-7.5M47 11.5h6"/><circle class="node" cx="56.5" cy="11.5" r="3.6"/></svg><span class="word">SPICE<em>y</em></span></button></h1>
   <label class="preset">
     <span class="sr">Example circuit</span>
     <select id="preset"></select>
@@ -55,7 +57,7 @@
 
 <dialog id="help-dialog" class="help">
   <header class="help-head">
-    <p class="kicker">Kirchhoff</p>
+    <p class="kicker">SPICEy</p>
     <h2>How to use it</h2>
     <form method="dialog"><button class="close" aria-label="Close">×</button></form>
   </header>
@@ -102,15 +104,16 @@
   <footer class="help-foot">
     <p>Each step solves the circuit with modified nodal analysis. Capacitors and inductors use the trapezoidal rule,
       and diodes and the regulator are found by iteration. The source is on
-      <a href="https://github.com/Quaot/kirchhoff">GitHub</a>.</p>
+      <a href="https://github.com/Quaot/SPICEy">GitHub</a>.</p>
   </footer>
 </dialog>
 
 <div id="intro" class="intro" hidden>
   <div class="intro-inner">
     <div class="intro-lead">
-      <p class="kicker">A circuit simulator</p>
-      <h2 class="intro-title"><em>Kirchhoff</em></h2>
+      <svg class="mark large" viewBox="0 0 64 64" aria-hidden="true"><path class="pepper" d="M41 19c8 3 10.5 12.5 6.5 21C42 51.5 28 58 10 56.5c13-4.5 21-12.5 24.5-23C36.5 27.5 36 21 41 19z"/><path class="lead" d="M41 19c-1-3.5 1.5-7 6-7.5M47 11.5h6"/><circle class="node" cx="56.5" cy="11.5" r="3.6"/></svg>
+      <p class="kicker">A SPICE-style circuit simulator for the browser</p>
+      <h2 class="intro-title"><span class="word">SPICE<em>y</em></span></h2>
       <p class="intro-text">Draw a circuit and watch it run. Wires take the colour of their voltage, and dots move with
         the current.</p>
       <p class="intro-small">Everything is solved in your browser, and nothing you draw is sent anywhere.</p>
@@ -125,7 +128,7 @@
       <ol id="intro-examples"></ol>
     </div>
   </div>
-  <p class="intro-foot">Made by Justin Gu. <a href="https://github.com/Quaot/kirchhoff">Source on GitHub</a></p>
+  <p class="intro-foot">Made by Justin Gu. <a href="https://github.com/Quaot/SPICEy">Source on GitHub</a></p>
 </div>
 
 <script type="module" src="src/app.js"></script>
