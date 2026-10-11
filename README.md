@@ -32,12 +32,13 @@ headroom, and the output falls away from 3.3 V on the scope.
 
 ## How it works
 
-The solver uses modified nodal analysis, the method at the heart of SPICE. It does not read SPICE netlists, though. Circuits are drawn, not typed. Each node voltage is an unknown, and so is the current through each
-voltage source and inductor. Every time step builds the matrix and solves it by Gaussian elimination with partial
+The solver uses modified nodal analysis, the method at the heart of SPICE. It does not read SPICE netlists, though.
+Circuits are drawn, not typed. Each node voltage is an unknown, and so is the current through each voltage source,
+inductor and regulator. Every time step builds the matrix and solves it by Gaussian elimination with partial
 pivoting. That is fast enough here, since a drawn circuit rarely has more than a few dozen unknowns.
 
 Capacitors and inductors are replaced at each step by a conductance and a current source, using the trapezoidal
-rule. Just after a sudden change, such as a square-wave edge or a flipped switch, one step uses backward Euler
+rule. Just after a sudden change, such as a square-wave edge or a flipped switch, two steps use backward Euler
 instead, which stops the trapezoidal rule from ringing on the jump. Diodes follow the Shockley equation and are
 solved by Newton's method, with the same step limit SPICE uses so that the exponential cannot overflow.
 
