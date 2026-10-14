@@ -1586,6 +1586,8 @@ async function start() {
   }
   if (embed) {
     load_preset(presets.find((item) => item.id === embed));
+    // slower than the app, so each step can be read (?speed= overrides it)
+    state.speed_factor = Number(embed_params.get('speed')) || 0.2;
     requestAnimationFrame(frame);
     return;
   }
