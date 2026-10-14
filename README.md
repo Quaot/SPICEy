@@ -1,4 +1,4 @@
-<img src="logo.svg" width="72" alt="">
+<img src="logo.svg" width="130" alt="">
 
 # SPICEy
 

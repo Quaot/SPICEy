@@ -234,12 +234,18 @@ button, input, select { font: inherit; color: inherit; }
 }
 .intro-lead { position: relative; }
 .intro-title { margin: 10px 0 18px; font-size: clamp(76px, 11vw, 150px); line-height: .9; font-weight: 400; letter-spacing: -.02em; }
-/* The pepper mark: its stem is a wire lead ending in a node. */
-.mark .pepper { fill: var(--accent); }
-.mark .lead { fill: none; stroke: var(--fg); stroke-width: 3; stroke-linecap: round; }
-.mark .node { fill: var(--bg); stroke: var(--fg); stroke-width: 2.6; }
-.mark.small { width: 38px; height: 38px; margin-right: 6px; vertical-align: -7px; }
-.mark.large { display: block; width: 84px; height: 84px; margin: 0 0 18px -6px; }
+/* The red-hot pepper, a light and a dark version that follow the theme. Its stem ends in a circuit node. */
+.mark.for-dark { display: none; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .mark.for-light { display: none; } :root:not([data-theme="light"]) .mark.for-dark { display: inline-block; } }
+:root[data-theme="dark"] .mark.for-light { display: none; }
+:root[data-theme="dark"] .mark.for-dark { display: inline-block; }
+.mark.small { width: 84px; height: 84px; margin: -25px -16px -25px -24px; vertical-align: -30px; }
+.mark.large { width: 218px; height: 218px; margin: -50px 0 -40px -66px; }
+.intro-lead .mark.large.for-light { display: block; }
+.intro-lead .mark.large.for-dark { display: none; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .intro-lead .mark.large.for-light { display: none; } :root:not([data-theme="light"]) .intro-lead .mark.large.for-dark { display: block; } }
+:root[data-theme="dark"] .intro-lead .mark.large.for-light { display: none; }
+:root[data-theme="dark"] .intro-lead .mark.large.for-dark { display: block; }
 .brand button { display: inline-flex; align-items: center; }
 /* The wordmark: SPICE upright, the y in italic accent, so it reads as SPICE plus a y and not a misspelling. */
 .word { font-family: var(--serif); font-weight: 400; font-style: normal; letter-spacing: -.01em; }
@@ -336,7 +342,7 @@ button, input, select { font: inherit; color: inherit; }
   display: flex; align-items: center; gap: 8px; position: absolute; right: 28px; top: 22px; color: var(--fg);
 }
 .embed .embed-sign { gap: 12px; }
-.embed .embed-sign .mark { width: 64px; height: 64px; filter: drop-shadow(0 0 14px color-mix(in srgb, var(--accent) 45%, transparent)); }
+.embed .embed-sign .mark { width: 141px; height: 141px; margin: -40px -36px -40px -30px; }
 .embed .embed-sign .lockup { display: flex; flex-direction: column; gap: 4px; }
 .embed .embed-sign .word { font-size: 50px; line-height: .9; letter-spacing: -.015em; }
 .embed .embed-sign .word em { text-shadow: 0 0 18px color-mix(in srgb, var(--accent) 40%, transparent); }
