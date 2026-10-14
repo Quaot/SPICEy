@@ -569,7 +569,7 @@ function fit_view() {
   const inspector_room = window.innerWidth > 760 && !embed ? 270 : 0;
   const usable = Math.max(200, rect.width - inspector_room);
   // When embedded, leave room on the right for the readout.
-  const readout_room = embed ? Math.min(330, rect.width * 0.3) : 0;
+  const readout_room = embed ? (rect.width < 560 ? rect.width * 0.27 : Math.min(330, rect.width * 0.3)) : 0;
   view.zoom = Math.max(0.4, Math.min(embed ? 3 : 2.2, (usable - readout_room) / width, rect.height / height));
   const centre_x = box.x + box.width / 2;
   const centre_y = box.y + box.height / 2;

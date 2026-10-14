@@ -344,3 +344,10 @@ button, input, select { font: inherit; color: inherit; }
 .embed .embed-readout .bits { margin: 0; font: 500 15px var(--mono); letter-spacing: .3em; color: var(--muted); }
 .embed .embed-readout .bits b { color: var(--accent); font-weight: 600; }
 @media (prefers-reduced-motion: reduce) { .embed .embed-sign .live i { animation: none; } }
+@media (max-width: 560px) {
+  .embed .embed-sign { display: none; }
+  .embed .embed-readout { right: 14px; }
+  .embed .embed-readout .kicker { font-size: 8px; }
+  .embed .embed-readout .value { font-size: 30px; }
+  .embed .embed-readout .bits { font-size: 10px; }
+}
