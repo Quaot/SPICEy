@@ -314,3 +314,33 @@ button, input, select { font: inherit; color: inherit; }
   .help-foot { padding: 12px 22px 22px; }
   .keys { grid-template-columns: auto 1fr auto 1fr; }
 }
+
+.embed-sign, .embed-readout { display: none; }
+/* Shown inside another page (?embed=<example>): the circuit and its scope only, larger and calmer. */
+.embed body { grid-template-rows: minmax(0, 1fr) 34%; }
+.embed .work, .embed .stage { grid-row: 1; }
+.embed .scope { grid-row: 2; }
+.embed .bar, .embed .tools, .embed .inspector, .embed .legend, .embed .banner, .embed .toast, .embed .flip, .embed .tip { display: none !important; }
+.embed .work { grid-template-columns: minmax(0, 1fr); }
+.embed .stage, .embed body { background: var(--bg); }
+.embed .scope { border-top: 0; }
+.embed .grid-dot { opacity: .55; }
+.embed .part .lead { stroke-width: 3.4; }
+.embed .part .body { stroke-width: 2.3; }
+.embed .part .hit { stroke: none !important; }
+.embed #current-dots { stroke-width: 5; filter: drop-shadow(0 0 3px var(--dot)); }
+.embed #board { pointer-events: none; }
+
+.embed .embed-sign {
+  display: flex; align-items: center; gap: 8px; position: absolute; left: 26px; top: 22px; color: var(--fg);
+}
+.embed .embed-sign .mark { width: 26px; height: 26px; }
+.embed .embed-sign .word { font-size: 24px; line-height: 1; }
+.embed .embed-sign .live { margin-left: 10px; display: inline-flex; align-items: center; gap: 7px; font: 500 10px var(--sans); letter-spacing: .16em; text-transform: uppercase; color: var(--muted); }
+.embed .embed-sign .live i { width: 7px; height: 7px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 0 var(--accent); animation: pulse 1.6s ease-out infinite; }
+@keyframes pulse { 0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 70%, transparent); } 100% { box-shadow: 0 0 0 9px transparent; } }
+.embed .embed-readout { display: block; position: absolute; right: 30px; top: 50%; transform: translateY(-50%); text-align: right; }
+.embed .embed-readout .value { margin: 4px 0 6px; font: italic 400 clamp(44px, 7vw, 92px)/1 var(--serif); color: var(--fg); font-variant-numeric: tabular-nums; min-width: 4.2ch; }
+.embed .embed-readout .bits { margin: 0; font: 500 15px var(--mono); letter-spacing: .3em; color: var(--muted); }
+.embed .embed-readout .bits b { color: var(--accent); font-weight: 600; }
+@media (prefers-reduced-motion: reduce) { .embed .embed-sign .live i { animation: none; } }

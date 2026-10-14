@@ -9,6 +9,13 @@ const svg_ns = 'http://www.w3.org/2000/svg';
 const $ = (selector) => document.querySelector(selector);
 const single_ended = new Set(['ground', 'rail', 'logic']);
 const storage_key = 'spicey:circuit';
+// ?embed=<example id> shows only that circuit and its scope, for showing SPICEy inside another page.
+const embed_params = new URLSearchParams(location.search);
+const embed = presets.some((item) => item.id === embed_params.get('embed')) ? embed_params.get('embed') : null;
+if (embed) {
+  document.documentElement.classList.add('embed');
+  if (['light', 'dark'].includes(embed_params.get('theme'))) document.documentElement.dataset.theme = embed_params.get('theme');
+}
 const old_storage_key = 'kirchhoff:circuit';
 
 function el(name, attributes = {}, parent = null) {
@@ -85,6 +92,7 @@ function redo() {
 }
 
 function save_local() {
+  if (embed) return;
   try { localStorage.setItem(storage_key, snapshot()); } catch { /* storage may be off */ }
 }
 
@@ -558,12 +566,14 @@ function fit_view() {
   const pad = (rect.width < 500 ? 1 : 2.5) * grid;
   const width = box.width + pad * 2;
   const height = box.height + pad * 2;
-  const inspector_room = window.innerWidth > 760 ? 270 : 0;
+  const inspector_room = window.innerWidth > 760 && !embed ? 270 : 0;
   const usable = Math.max(200, rect.width - inspector_room);
-  view.zoom = Math.max(0.4, Math.min(2.2, usable / width, rect.height / height));
+  // When embedded, leave room on the right for the readout.
+  const readout_room = embed ? Math.min(330, rect.width * 0.3) : 0;
+  view.zoom = Math.max(0.4, Math.min(embed ? 3 : 2.2, (usable - readout_room) / width, rect.height / height));
   const centre_x = box.x + box.width / 2;
   const centre_y = box.y + box.height / 2;
-  view.x = centre_x - usable / 2 / view.zoom;
+  view.x = centre_x - (usable - readout_room) / 2 / view.zoom;
   view.y = centre_y - rect.height / 2 / view.zoom;
   apply_view();
 }
@@ -683,6 +693,7 @@ function part_at(target) {
 }
 
 board.addEventListener('pointerdown', (event) => {
+  if (embed) return;
   board.setPointerCapture(event.pointerId);
   pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
   hide_tip();
@@ -1189,7 +1200,7 @@ function draw_scope() {
   const style = getComputedStyle(document.documentElement);
   const ink = style.getPropertyValue('--fg').trim(), muted = style.getPropertyValue('--muted').trim(), line = style.getPropertyValue('--line').trim();
   ctx.clearRect(0, 0, width, height);
-  const left = 54, right = state.probes.some((probe) => probe.kind === 'current') ? 64 : 16, top = 40, bottom = 24;
+  const left = 54, right = state.probes.some((probe) => probe.kind === 'current') ? 64 : 16, top = embed ? 14 : 40, bottom = 24;
   const plot_w = width - left - right, plot_h = height - top - bottom;
   if (plot_w < 40 || plot_h < 20) return;
   const now = sim ? sim.time : 0;
@@ -1258,11 +1269,13 @@ function draw_scope() {
       ctx.fillText(format_value(Math.abs(i) < i_step / 1e6 ? 0 : i, 'A', 3), left + plot_w + 6, current_axis.y_of(i));
     }
   }
-  ctx.strokeStyle = muted;
-  ctx.strokeRect(left + 0.5, top + 0.5, plot_w - 1, plot_h - 1);
+  if (!embed) {
+    ctx.strokeStyle = muted;
+    ctx.strokeRect(left + 0.5, top + 0.5, plot_w - 1, plot_h - 1);
+  }
 
-  // traces
-  ctx.lineWidth = 2; ctx.lineJoin = 'round';
+  // traces, with a soft glow when SPICEy is shown inside another page
+  ctx.lineWidth = embed ? 2.6 : 2; ctx.lineJoin = 'round';
   ctx.save();
   ctx.beginPath(); ctx.rect(left, top, plot_w, plot_h); ctx.clip();
   state.probes.forEach((probe, index) => {
@@ -1270,6 +1283,7 @@ function draw_scope() {
     if (!series || series.length < 2) return;
     const { y_of } = axes[probe.kind];
     ctx.strokeStyle = probe_color(index);
+    if (embed) { ctx.shadowColor = probe_color(index); ctx.shadowBlur = 10; }
     ctx.beginPath();
     for (let i = Math.max(0, first - 1); i < series.length; i++) {
       const x = x_of(times[i]), y = y_of(series[i]);
@@ -1471,6 +1485,7 @@ function set_tool(type) {
 }
 
 window.addEventListener('keydown', (event) => {
+  if (embed) return;
   if (event.target.closest?.('input, select, textarea') || help.open) return;
   if (!intro.hidden) { if (event.key === 'Escape') close_intro(); return; }
   const key = event.key;
@@ -1488,6 +1503,21 @@ window.addEventListener('keydown', (event) => {
   const tool = tools.find((item) => item.key === key.toLowerCase());
   if (tool) set_tool(tool.type);
 });
+
+// ---------- Embedded readout ----------
+
+function update_embed_readout() {
+  const probe = state.probes[0];
+  if (!probe) return;
+  const series = scope_buffer.series[0];
+  const value = series?.length ? series.at(-1) : probe_value(probe);
+  $('#embed-value').textContent = format_value(value, probe.kind === 'voltage' ? 'V' : 'A', 3);
+  // logic inputs, most significant first, as the code they spell
+  const inputs = state.parts.filter((part) => part.type === 'logic').reverse();
+  $('#embed-bits').innerHTML = inputs.length
+    ? inputs.map((part) => ((node_voltage_at(point_key(part.x1, part.y1)) ?? 0) > part.high / 2 ? '<b>1</b>' : '0')).join('')
+    : '';
+}
 
 // ---------- Banner and loop ----------
 
@@ -1519,6 +1549,7 @@ function frame(now) {
   advance(wall_dt);
   paint(wall_dt);
   draw_scope();
+  if (embed) update_embed_readout();
   if (frame_count++ % 6 === 0) {
     update_live();
     update_legend_values();
@@ -1552,6 +1583,11 @@ async function start() {
       const saved = localStorage.getItem(storage_key) ?? localStorage.getItem(old_storage_key);
       if (saved) { restore(saved); loaded = true; has_saved_circuit = true; }
     } catch { /* storage may be off */ }
+  }
+  if (embed) {
+    load_preset(presets.find((item) => item.id === embed));
+    requestAnimationFrame(frame);
+    return;
   }
   if (!hash) open_intro();
   if (loaded) {
